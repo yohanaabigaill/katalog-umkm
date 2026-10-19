@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { revalidatePath } from "next/cache";
+import { createAdminClient, createSessionClient } from "@/lib/supabase/admin";
 
 export async function login(prevState, formData) {
   const data = formData instanceof FormData ? formData : prevState;
@@ -85,6 +86,58 @@ export async function gantiPassword(prevState, formData) {
   } catch (err) {
     return { error: err.message || "Terjadi kesalahan saat mengganti password." };
   }
+}
+
+export async function tambahProduk(prevState, formData) {
+  const data = formData instanceof FormData ? formData : prevState;
+
+  const nama = data?.get?.("nama")?.toString().trim();
+  const hargaRaw = data?.get?.("harga")?.toString().trim();
+  const kategori = data?.get?.("kategori")?.toString().trim() || null;
+  const foto_url = data?.get?.("foto_url")?.toString().trim() || null;
+  const deskripsi = data?.get?.("deskripsi")?.toString().trim() || null;
+
+  if (!nama) {
+    return { error: "Nama produk wajib diisi." };
+  }
+
+  const harga = parseInt(hargaRaw, 10);
+  if (isNaN(harga) || harga < 0) {
+    return { error: "Harga harus berupa angka dan tidak boleh negatif." };
+  }
+
+  try {
+    const supabase = await createSessionClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { error: "Kamu harus login terlebih dahulu." };
+    }
+
+    const { error: insertError } = await supabase.from("produk").insert({
+      nama,
+      harga,
+      kategori,
+      foto_url,
+      deskripsi,
+    });
+
+    if (insertError) {
+      return { error: insertError.message || "Gagal menyimpan produk." };
+    }
+  } catch (err) {
+    if (err?.digest?.startsWith("NEXT_REDIRECT")) {
+      throw err;
+    }
+    return { error: err.message || "Terjadi kesalahan saat menyimpan produk." };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/");
+  redirect("/admin");
 }
 
 export const logout = keluar;
